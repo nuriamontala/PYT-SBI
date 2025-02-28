@@ -6,67 +6,113 @@ import pandas as pd
 import numpy as np
 import shutil
 import time
+import traceback
 
 AA_PROPERTIES = {
-    "ALA": [1.24, 0.62, 0.38, 0.05, 6.00, 1.42, 1.00],
-    "ARG": [2.74, -2.53, 0.89, 0.93, 10.76, 0.98, 0.79],
-    "ASN": [2.14, -0.78, 0.48, 0.54, 5.41, 0.89, 0.76],
-    "ASP": [2.16, -0.90, 0.49, 0.52, 2.85, 0.85, 0.72],
-    "CYS": [1.50, 0.29, 0.54, 0.79, 5.07, 0.77, 0.63],
-    "GLN": [2.17, -0.85, 0.51, 0.70, 5.65, 1.11, 0.92],
-    "GLU": [2.18, -0.74, 0.52, 0.67, 3.15, 1.09, 0.90],
-    "GLY": [0.00, 0.48, 0.00, 0.00, 6.06, 0.57, 0.57],
-    "HIS": [2.48, -0.40, 0.69, 0.95, 7.60, 1.00, 0.87],
-    "ILE": [3.08, 1.25, 0.76, 0.90, 6.05, 1.00, 0.97],
-    "LEU": [2.80, 1.22, 0.74, 0.92, 6.01, 1.34, 1.01],
-    "LYS": [2.90, -2.25, 0.84, 0.93, 9.74, 1.00, 0.79],
-    "MET": [2.67, 1.02, 0.72, 1.01, 5.74, 1.20, 0.97],
-    "PHE": [2.58, 1.47, 0.78, 1.26, 5.48, 1.16, 0.95],
-    "PRO": [1.95, 0.09, 0.64, 0.75, 6.30, 0.57, 0.55],
-    "SER": [1.31, -0.28, 0.41, 0.68, 5.68, 0.77, 0.75],
-    "THR": [1.50, -0.18, 0.44, 0.69, 5.60, 0.83, 0.78],
-    "TRP": [3.07, 1.45, 0.81, 1.41, 5.89, 1.09, 0.92],
-    "TYR": [2.67, 0.94, 0.76, 1.20, 5.64, 0.97, 0.90],
-    "VAL": [2.50, 1.08, 0.71, 0.91, 6.00, 1.06, 0.93],
+    "ALA": [1.24, 0.62, 0.38, 6.00],
+    "ARG": [2.74, -2.53, 0.89, 10.76],
+    "ASN": [2.14, -0.78, 0.48, 5.41],
+    "ASP": [2.16, -0.90, 0.49, 2.85],
+    "CYS": [1.50, 0.29, 0.54, 5.07],
+    "GLN": [2.17, -0.85, 0.51, 5.65],
+    "GLU": [2.18, -0.74, 0.52, 3.15],
+    "GLY": [0.00, 0.48, 0.00, 6.06],
+    "HIS": [2.48, -0.40, 0.69, 7.60],
+    "ILE": [3.08, 1.25, 0.76, 6.05],
+    "LEU": [2.80, 1.22, 0.74, 6.01],
+    "LYS": [2.90, -2.25, 0.84, 9.74],
+    "MET": [2.67, 1.02, 0.72, 5.74],
+    "PHE": [2.58, 1.47, 0.78, 5.48],
+    "PRO": [1.95, 0.09, 0.64, 6.30],
+    "SER": [1.31, -0.28, 0.41, 5.68],
+    "THR": [1.50, -0.18, 0.44, 5.60],
+    "TRP": [3.07, 1.45, 0.81, 5.89],
+    "TYR": [2.67, 0.94, 0.76, 5.64],
+    "VAL": [2.50, 1.08, 0.71, 6.00],
 }
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
-def pdb2fasta(pdb_id, pdb_directory, fasta_directory):
+def pdb2fasta(pdb_id, pdb_directory, fasta_directory, min_length=30):
     """Extract protein sequence from a PDB file and save it as FASTA in the fasta directory."""
     res_dict = {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K',
                'ILE': 'I', 'PRO': 'P', 'THR': 'T', 'PHE': 'F', 'ASN': 'N',
                'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W',
                'ALA': 'A', 'VAL': 'V', 'GLU': 'E', 'TYR': 'Y', 'MET': 'M'}
     
-    os.makedirs(pdb_directory, exist_ok=True)
     os.makedirs(fasta_directory, exist_ok=True)
 
-    pdb_file = f"{pdb_directory}/{pdb_id}.pdb"
+    pdb_file = os.path.join(pdb_directory, f"{pdb_id}.pdb")
     
-    parser = PDBParser(QUIET=True)
-    structure = parser.get_structure(pdb_id, pdb_file)
-    
-    chain_dict={}
-    for model in structure:
-        for chain in model:
-            chain_id=pdb_id+"_"+chain.get_id()
-            seq=[]
-            for residue in chain:
-                if residue.resname in res_dict:
-                    seq.append(res_dict[residue.resname])
-            seq=''.join(seq)
-            if len(seq)>30:
-                chain_dict[chain_id]=seq
-            seq=[]
-    
-    for chain_id in chain_dict:
-        fasta_file = f"{fasta_directory}/{chain_id}.fa"
+    # Diccionario para almacenar las secuencias
+    chain_dict = {}
+
+    # Leer SEQRES del PDB
+    with open(pdb_file, "r") as f:
+        for line in f:
+            if line.startswith("SEQRES"):
+                parts = line.split()
+                chain_id=pdb_id+"_"+parts[2]
+                # Convertir residuos de tres letras a una letra
+                seq = [res_dict.get(res, "X") for res in parts[4:]]  
+                if chain_id in chain_dict:
+                    chain_dict[chain_id] += "".join(seq)
+                else:
+                    chain_dict[chain_id] = "".join(seq)
+
+    # Filtrar cadenas cortas y guardar en FASTA
+    final_dict = {key: seq for key, seq in chain_dict.items() if len(seq) > min_length}
+
+    for chain_id, sequence in final_dict.items():
+        fasta_file = os.path.join(fasta_directory, f"{chain_id}.fa")
         with open(fasta_file, "w") as f:
-            f.write(f'>{chain_id}\n'+''.join(chain_dict[chain_id]))
-            print(f"Fasta sequence saved to {fasta_file}")
-    return chain_dict
+            f.write(f">{chain_id}\n{sequence}\n")
+        print(f"FASTA saved: {fasta_file}")
+
+    return final_dict
+
+def get_offset_from_pdb(pdb_id, pdb_directory):
+    """Extract offsets per chain from PDB file. Return a dictionary {chain_id: offset}."""
+
+    pdb_file = os.path.join(pdb_directory, f"{pdb_id}.pdb")
+
+    offset_per_chain = {}
+    first_missing_per_chain = {}
+    first_atom_per_chain = {}
+
+    with open(pdb_file, "r") as f:
+        for line in f:
+            parts = line.split()
+            
+            if line.startswith("REMARK 465") and len(parts) == 5:
+                _, _, resname, chain, res_id = parts 
+                try:
+                    chain_id=pdb_id+"_"+chain
+                    res_id = int(res_id) 
+                    if chain_id not in first_missing_per_chain:
+                        first_missing_per_chain[chain_id] = res_id
+                except ValueError:
+                    pass 
+
+            elif line.startswith("ATOM"):
+                try:
+                    res_id = int(line[22:26].strip()) 
+                    chain = line[21]
+                    chain_id=pdb_id+"_"+chain
+                    if chain_id not in first_atom_per_chain:
+                        first_atom_per_chain[chain_id] = res_id
+                except ValueError:
+                    pass
+
+    for chain_id in set(first_missing_per_chain) | set(first_atom_per_chain):
+        first_res_id = min(
+            first_missing_per_chain.get(chain_id, float('inf')),
+            first_atom_per_chain.get(chain_id, float('inf'))
+        )
+        offset_per_chain[chain_id] = first_res_id - 1
+
+    return offset_per_chain
 
 def get_physicochemical_features(pdb_id, pdb_directory):
     """Extract physicochemical properties and B-factor for each residue in a PDB file."""
@@ -100,11 +146,11 @@ def get_structural_features(pdb_id, pdb_directory, output_directory):
     model = structure[0]
 
     # Load DSSP (ASA and secondary structure)
-    dssp = DSSP(model, pdb_file, dssp="mkdssp")  
-
+    dssp = DSSP(model, pdb_file, dssp="mkdssp") 
+    # for key in list(dssp.keys())[:5]:
+    #     print(f"Residuo: {key}, Datos DSSP: {dssp[key]}")
     # Compute Half Sphere Exposure
     hse = HSExposureCB(model)
-
     # Obtener todos los Cα para Contact Number (CN)
     ca_atoms = [residue['CA'] for chain in model for residue in chain if 'CA' in residue]
     ns = NeighborSearch(ca_atoms)
@@ -246,7 +292,7 @@ def run_jackhmmer(chain_dictionary, db, fasta_directory, jackhmmr_directory, num
                 except subprocess.CalledProcessError as e:
                     print(f"Error running jackhmmer: {e}")
 
-def parse_pssm(chain_dictionary, psiblast_directory):
+def parse_pssm(chain_dictionary, psiblast_directory, offset_per_chain):
     """Parse the PSSM file and return a dictionary with residue indices as keys and PSSM values as lists."""
     pssm_data = {}
     for chain_id, _ in chain_dictionary.items():
@@ -262,14 +308,15 @@ def parse_pssm(chain_dictionary, psiblast_directory):
                     scoreList=line.split()
                     if len(scoreList) < 20:
                         break 
-                    res_id=int(scoreList[0])
+                    offset=offset_per_chain[chain_id]
+                    res_id=int(scoreList[0])+offset
                     scores = list(map(int, scoreList[0:22][2:]))
                     sigmoid_scores=[sigmoid(s) for s in scores]
                     pssm_data[(res_id, chain_id.split("_")[1])] = sigmoid_scores
 
     return(pssm_data)
     
-def parse_hmm(chain_dictionary, jackhmmr_directory):
+def parse_hmm(chain_dictionary, jackhmmr_directory, offset_per_chain):
     """Parse the HMM file and return a dictionary with residue indices as keys and HMM probabilities."""
     hmm_data = {}
     for chain_id, _ in chain_dictionary.items():
@@ -284,21 +331,23 @@ def parse_hmm(chain_dictionary, jackhmmr_directory):
                 if reading:
                     scores = line.split()
                     if len(scores)==26:
-                        res_id=scores[0]
-                        emissions = [float(s) / 10000 for s in scores[1:21]]
+                        offset=offset_per_chain[chain_id]
+                        res_id=int(scores[0])+offset
+                        emissions = [float(s) for s in scores[1:21]]
                     if len(scores)==7 and not scores[0].startswith("m->"):
-                        transitions = [0.0 if s == '*' else float(s) / 10000 for s in scores]
+                        transitions = [0.0 if s == '*' else float(s) for s in scores]
                         if emissions and transitions:
-                            hmm_data[(int(res_id), chain_id.split("_")[1])]=emissions+transitions
+                            hmm_data[(res_id, chain_id.split("_")[1])]=emissions+transitions
                             emissions=None
 
     return hmm_data
 
 column_names = (
-    ["prop1","prop2","prop3","prop4","prop5","prop6","prop7", "b_factor"]
+    ["prop1","prop2","prop3","prop4", "b_factor"]
     + ["sin_phi", "cos_phi", "sin_psi", "cos_psi", "H", "B", "E", "G", "I", "T", "S", "-", "ASA", "HSE_up", "HSE_down", "CN"]
     + ["PSSM_" + str(i) for i in range(1,21)]
     + ["HMM_" + str(i) for i in range(1,28)]
+    + ["binding_site"]
 )
 
 def merge_data(physicochemical_data, structural_data, pssm_data, hmm_data):
@@ -311,13 +360,34 @@ def merge_data(physicochemical_data, structural_data, pssm_data, hmm_data):
     features = np.array(list(final_data.values()))
     return residue_ids, features
 
+def get_binding_sites(pdb_id, pdb_site_directory):
+    """Parse edited PDB files and return a dictionary labeling binding site residues."""
 
-def merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data, output_file):
+    pdb_file = os.path.join(pdb_site_directory, f"{pdb_id}_protwithsite.pdb")
+    binding_data = {}
+
+    with open(pdb_file, "r") as f:
+        for line in f:
+            if line.startswith("ATOM") or line.startswith("SITE"):  
+                try:
+                    res_id = int(line[22:26].strip())
+                    chain = line[21] 
+                    if line.startswith("SITE"):
+                        binding_data[(res_id, chain)] = [1]
+                    elif (res_id, chain) not in binding_data:
+                        binding_data[(res_id, chain)] = [0]  
+
+                except ValueError:
+                    pass
+    return binding_data
+
+
+def merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data, binding_data, output_file):
     final_data = {}
 
     for key in structural_data.keys():
-        if key in pssm_data and key in hmm_data:  
-            final_data[key] = physicochemical_data[key] + structural_data[key] + pssm_data[key] + hmm_data[key]
+        if key in pssm_data and key in hmm_data and key in binding_data:  
+            final_data[key] = physicochemical_data[key] + structural_data[key] + pssm_data[key] + hmm_data[key] + binding_data[key]
 
     if not final_data:  # Si no hay datos, no se escribe el CSV
         print("--------------No hay datos para escribir en el CSV.")
@@ -338,6 +408,7 @@ def merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data
 def main():
 
     pdb_directory="../files/pdb/original_files"
+    pdb_site_directory="../files/pdb/protwithsitefinal"
     fasta_directory="../files/fasta"
     psiblast_directory="../files/psiblast"
     jackhmmr_directory="../files/jackhmmr"
@@ -351,41 +422,50 @@ def main():
 
     pdb_ids = [f[:-4] for f in os.listdir(pdb_directory) if f.endswith(".pdb")]
     pdb_filtered = [pdb_id for pdb_id in pdb_ids if pdb_id not in pdb_missing]
-    for pdb_id in pdb_filtered[5:10]:
-        # Start timer
-        start_time = time.time() 
+    # pdb_filtered = ["3emh"]
+    for pdb_id in pdb_filtered[11:101]:
+        try:
+            # Start timer
+            start_time = time.time() 
 
-        # Extract fasta for each chain
-        chains=pdb2fasta(pdb_id,  pdb_directory, fasta_directory)
-        # Get physicochemical and structural information from the whole pdb
-        physicochemical_data=get_physicochemical_features(pdb_id, pdb_directory)
-        structural_data=get_structural_features(pdb_id, pdb_directory, structural_directory)
-        # Run PSI-BLAST for each chain
-        run_psiblast(chains, database_psiblast, fasta_directory, psiblast_directory)
-        pssm_data=parse_pssm(chains, psiblast_directory)
-        # Run jackhmmr for each chain
-        run_jackhmmer(chains, database_jackhmmer, fasta_directory, jackhmmr_directory,num_iterations=3)
-        hmm_data=parse_hmm(chains, jackhmmr_directory)
-        # Merge all the features in one numpy matrix
-        # residue_ids, features = merge_data(physicochemical_data, structural_data, pssm_data, hmm_data)
-        merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data, f"{features_directory}/{pdb_id}.csv")
-        # num_residues, num_features = features.shape
-        # print(f"Matrix size: {num_residues} x {num_features}")
-        # Save matrix to features directory
-        # os.makedirs(features_directory, exist_ok=True)
-        # np.savez(f"{features_directory}/{pdb_id}.npz", res_ids=residue_ids, features=features)
+            # Extract fasta for each chain
+            chains=pdb2fasta(pdb_id,  pdb_directory, fasta_directory)
+            offset=get_offset_from_pdb(pdb_id, pdb_directory)
+            # Get physicochemical and structural information from the whole pdb
+            physicochemical_data=get_physicochemical_features(pdb_id, pdb_directory)
+            structural_data=get_structural_features(pdb_id, pdb_directory, structural_directory)
+            # Run PSI-BLAST for each chain
+            run_psiblast(chains, database_psiblast, fasta_directory, psiblast_directory)
+            pssm_data=parse_pssm(chains, psiblast_directory, offset)
+            # Run jackhmmr for each chain
+            run_jackhmmer(chains, database_jackhmmer, fasta_directory, jackhmmr_directory,num_iterations=3)
+            hmm_data=parse_hmm(chains, jackhmmr_directory, offset)
+            # Get binding site label
+            binding_data=get_binding_sites(pdb_id, pdb_site_directory)
+            # Merge all the features in one numpy matrix
+            # residue_ids, features = merge_data(physicochemical_data, structural_data, pssm_data, hmm_data)
+            merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data, binding_data, f"{features_directory}/{pdb_id}.csv")
+            # num_residues, num_features = features.shape
+            # print(f"Matrix size: {num_residues} x {num_features}")
+            # Save matrix to features directory
+            # os.makedirs(features_directory, exist_ok=True)
+            # np.savez(f"{features_directory}/{pdb_id}.npz", res_ids=residue_ids, features=features)
 
-        # Remove files from fasta, psiblast and jackhmmr directories
-        for folder in [fasta_directory, psiblast_directory, jackhmmr_directory]:
-            if os.path.exists(folder) and os.path.isdir(folder):  # Verifica que la carpeta exista
-                for file in os.listdir(folder):
-                    file_path = os.path.join(folder, file)
-                    os.remove(file_path)
+            # Remove files from fasta, psiblast and jackhmmr directories
+            for folder in [fasta_directory, psiblast_directory, jackhmmr_directory]:
+                if os.path.exists(folder) and os.path.isdir(folder):  # Verifica que la carpeta exista
+                    for file in os.listdir(folder):
+                        file_path = os.path.join(folder, file)
+                        os.remove(file_path)
 
-        # Print execution time of iteration        
-        end_time = time.time() 
-        elapsed_time = end_time - start_time  
-        print(f"Total time of execution: {elapsed_time:.2f} seconds")
+            # Print execution time of iteration        
+            end_time = time.time() 
+            elapsed_time = end_time - start_time  
+            print(f"Total time of execution: {elapsed_time:.2f} seconds")
+        except Exception as e:
+            with open("errores.log", "a") as f:
+                f.write(f"Error con {pdb_id}: {e}\n")
+                f.write(traceback.format_exc() + "\n")
 
 if __name__ == "__main__":
     main()
