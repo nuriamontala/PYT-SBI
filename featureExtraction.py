@@ -7,40 +7,15 @@ import numpy as np
 import shutil
 import time
 import traceback
+import multiprocessing as mp
 
-AA_PROPERTIES = {
-    "ALA": [1.24, 0.62, 0.38, 6.00],
-    "ARG": [2.74, -2.53, 0.89, 10.76],
-    "ASN": [2.14, -0.78, 0.48, 5.41],
-    "ASP": [2.16, -0.90, 0.49, 2.85],
-    "CYS": [1.50, 0.29, 0.54, 5.07],
-    "GLN": [2.17, -0.85, 0.51, 5.65],
-    "GLU": [2.18, -0.74, 0.52, 3.15],
-    "GLY": [0.00, 0.48, 0.00, 6.06],
-    "HIS": [2.48, -0.40, 0.69, 7.60],
-    "ILE": [3.08, 1.25, 0.76, 6.05],
-    "LEU": [2.80, 1.22, 0.74, 6.01],
-    "LYS": [2.90, -2.25, 0.84, 9.74],
-    "MET": [2.67, 1.02, 0.72, 5.74],
-    "PHE": [2.58, 1.47, 0.78, 5.48],
-    "PRO": [1.95, 0.09, 0.64, 6.30],
-    "SER": [1.31, -0.28, 0.41, 5.68],
-    "THR": [1.50, -0.18, 0.44, 5.60],
-    "TRP": [3.07, 1.45, 0.81, 5.89],
-    "TYR": [2.67, 0.94, 0.76, 5.64],
-    "VAL": [2.50, 1.08, 0.71, 6.00],
-}
+
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
-
-def pdb2fasta(pdb_id, pdb_directory, fasta_directory, min_length=30):
+def pdb2fasta(pdb_id, pdb_directory, fasta_directory, res_dict, min_length=30, max_chains=6):
     """Extract protein sequence from a PDB file and save it as FASTA in the fasta directory."""
-    res_dict = {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K',
-               'ILE': 'I', 'PRO': 'P', 'THR': 'T', 'PHE': 'F', 'ASN': 'N',
-               'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W',
-               'ALA': 'A', 'VAL': 'V', 'GLU': 'E', 'TYR': 'Y', 'MET': 'M'}
-    
+   
     os.makedirs(fasta_directory, exist_ok=True)
 
     pdb_file = os.path.join(pdb_directory, f"{pdb_id}.pdb")
@@ -61,7 +36,10 @@ def pdb2fasta(pdb_id, pdb_directory, fasta_directory, min_length=30):
                 else:
                     chain_dict[chain_id] = "".join(seq)
 
-    # Filtrar cadenas cortas y guardar en FASTA
+    num_chains = len(chain_dict)
+    if num_chains > max_chains:
+        raise Exception(f"Skipping PDB. File has {num_chains} chains (limit: {max_chains})")
+    # Filtwer short chains and save in FASTA
     final_dict = {key: seq for key, seq in chain_dict.items() if len(seq) > min_length}
 
     for chain_id, sequence in final_dict.items():
@@ -114,9 +92,30 @@ def get_offset_from_pdb(pdb_id, pdb_directory):
 
     return offset_per_chain
 
-def get_physicochemical_features(pdb_id, pdb_directory):
+def get_physicochemical_features(pdb_id, pdb_directory, res_dict):
     """Extract physicochemical properties and B-factor for each residue in a PDB file."""
-    
+    AA_PROPERTIES = {
+        "ALA": [1.24, 0.62, 0.38, 6.00],
+        "ARG": [2.74, -2.53, 0.89, 10.76],
+        "ASN": [2.14, -0.78, 0.48, 5.41],
+        "ASP": [2.16, -0.90, 0.49, 2.85],
+        "CYS": [1.50, 0.29, 0.54, 5.07],
+        "GLN": [2.17, -0.85, 0.51, 5.65],
+        "GLU": [2.18, -0.74, 0.52, 3.15],
+        "GLY": [0.00, 0.48, 0.00, 6.06],
+        "HIS": [2.48, -0.40, 0.69, 7.60],
+        "ILE": [3.08, 1.25, 0.76, 6.05],
+        "LEU": [2.80, 1.22, 0.74, 6.01],
+        "LYS": [2.90, -2.25, 0.84, 9.74],
+        "MET": [2.67, 1.02, 0.72, 5.74],
+        "PHE": [2.58, 1.47, 0.78, 5.48],
+        "PRO": [1.95, 0.09, 0.64, 6.30],
+        "SER": [1.31, -0.28, 0.41, 5.68],
+        "THR": [1.50, -0.18, 0.44, 5.60],
+        "TRP": [3.07, 1.45, 0.81, 5.89],
+        "TYR": [2.67, 0.94, 0.76, 5.64],
+        "VAL": [2.50, 1.08, 0.71, 6.00]
+        }
     pdb_file = f"{pdb_directory}/{pdb_id}.pdb"
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("protein", pdb_file)
@@ -129,15 +128,14 @@ def get_physicochemical_features(pdb_id, pdb_directory):
         for residue in chain:
             if residue.id[0] == " " and "CA" in residue:  # Solo aminoácidos estándar con Cα
                 res_id = residue.id[1]  
-                aa = residue.resname  
-                b_factor = residue["CA"].bfactor  # B-factor del carbono alfa                
+                res_name = residue.resname  
+                b_factor = residue["CA"].bfactor  # B-factor del carbono alfa   
                 # Obtener propiedades o usar valores por defecto
-                features = AA_PROPERTIES.get(aa, [0.0] * 7) + [b_factor]
-                physicochemical_data[(res_id, chain_id)] = features
-
+                features = AA_PROPERTIES.get(res_name, [0.0] * 7) + [b_factor]
+                physicochemical_data[(res_id, chain_id, res_dict[res_name])] = features
     return physicochemical_data
 
-def get_structural_features(pdb_id, pdb_directory, output_directory):
+def get_structural_features(pdb_id, pdb_directory, res_dict):
     """Extract structural features from a PDB file and save to a CSV file."""
     pdb_file = f"{pdb_directory}/{pdb_id}.pdb"
 
@@ -160,7 +158,8 @@ def get_structural_features(pdb_id, pdb_directory, output_directory):
     for chain in model:
         for residue in chain:
             chain_id = chain.id
-            res_id = residue.id[1] 
+            res_id = residue.id[1]
+            res_name = residue.resname  
             if residue.id[0] == " " and (chain_id, res_id) in dssp:
                 # Torsional angles phi y psi (sinus and cosinus)
                 phi = np.radians(dssp[(chain.id, res_id)][4])
@@ -202,7 +201,7 @@ def get_structural_features(pdb_id, pdb_directory, output_directory):
                     1 if ss == "S" else 0,
                     1 if ss == "-" else 0,                        
                     asa, hse_values[0], hse_values[1], cn]
-                structural_data[(res_id,chain_id)]=data_list
+                structural_data[(res_id,chain_id, res_dict[res_name])]=data_list
     return structural_data
 
 def run_psiblast(chain_dictionary, db, fasta_directory, psiblast_directory, num_iterations=3, evalue=0.001):
@@ -310,16 +309,16 @@ def parse_pssm(chain_dictionary, psiblast_directory, offset_per_chain):
                         break 
                     offset=offset_per_chain[chain_id]
                     res_id=int(scoreList[0])+offset
+                    res_name = scoreList[1]
                     scores = list(map(int, scoreList[0:22][2:]))
                     sigmoid_scores=[sigmoid(s) for s in scores]
-                    pssm_data[(res_id, chain_id.split("_")[1])] = sigmoid_scores
-
-    return(pssm_data)
+                    pssm_data[(res_id, chain_id.split("_")[1], res_name)] = sigmoid_scores
+    return pssm_data
     
 def parse_hmm(chain_dictionary, jackhmmr_directory, offset_per_chain):
     """Parse the HMM file and return a dictionary with residue indices as keys and HMM probabilities."""
     hmm_data = {}
-    for chain_id, _ in chain_dictionary.items():
+    for chain_id, sequence in chain_dictionary.items():
         hmm_file=f"{jackhmmr_directory}/{chain_id}.hmm"
         reading = False
         emissions = None
@@ -331,15 +330,16 @@ def parse_hmm(chain_dictionary, jackhmmr_directory, offset_per_chain):
                 if reading:
                     scores = line.split()
                     if len(scores)==26:
+                        hmm_index = int(scores[0]) - 1 
                         offset=offset_per_chain[chain_id]
-                        res_id=int(scores[0])+offset
+                        res_id=hmm_index + 1 + offset
+                        res_name=sequence[hmm_index]
                         emissions = [float(s) for s in scores[1:21]]
                     if len(scores)==7 and not scores[0].startswith("m->"):
                         transitions = [0.0 if s == '*' else float(s) for s in scores]
                         if emissions and transitions:
-                            hmm_data[(res_id, chain_id.split("_")[1])]=emissions+transitions
+                            hmm_data[(res_id, chain_id.split("_")[1], res_name)]=emissions+transitions
                             emissions=None
-
     return hmm_data
 
 column_names = (
@@ -350,17 +350,7 @@ column_names = (
     + ["binding_site"]
 )
 
-def merge_data(physicochemical_data, structural_data, pssm_data, hmm_data):
-    final_data={}
-    for key in structural_data.keys():
-        if key in pssm_data.keys() and key in hmm_data.keys():
-            final_data[key] = physicochemical_data[key] + structural_data[key] + pssm_data[key] + hmm_data[key]
-    
-    residue_ids = np.array(list(final_data.keys()), dtype=object)  
-    features = np.array(list(final_data.values()))
-    return residue_ids, features
-
-def get_binding_sites(pdb_id, pdb_site_directory):
+def get_binding_sites(pdb_id, pdb_site_directory, res_dict):
     """Parse edited PDB files and return a dictionary labeling binding site residues."""
 
     pdb_file = os.path.join(pdb_site_directory, f"{pdb_id}_protwithsite.pdb")
@@ -371,35 +361,40 @@ def get_binding_sites(pdb_id, pdb_site_directory):
             if line.startswith("ATOM") or line.startswith("SITE"):  
                 try:
                     res_id = int(line[22:26].strip())
-                    chain = line[21] 
+                    chain = line[21]
+                    res_name = line[17:20].strip() 
                     if line.startswith("SITE"):
-                        binding_data[(res_id, chain)] = [1]
+                        binding_data[(res_id, chain, res_dict[res_name])] = [1]
                     elif (res_id, chain) not in binding_data:
-                        binding_data[(res_id, chain)] = [0]  
+                        binding_data[(res_id, chain, res_dict[res_name])] = [0]  
 
                 except ValueError:
                     pass
     return binding_data
 
-
 def merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data, binding_data, output_file):
     final_data = {}
+    mismatch_found = False
+    with open("errores.log", "a") as error_log:
+        for key in structural_data.keys():
+            if key in physicochemical_data and key in pssm_data and key in hmm_data and key in binding_data:              
+                final_data[key] = physicochemical_data[key] + structural_data[key] + pssm_data[key] + hmm_data[key] + binding_data[key]
+            else:
+                error_log.write(f">{output_file} Mismatch for structural key {key}")
+                mismatch_found=True
 
-    for key in structural_data.keys():
-        if key in pssm_data and key in hmm_data and key in binding_data:  
-            final_data[key] = physicochemical_data[key] + structural_data[key] + pssm_data[key] + hmm_data[key] + binding_data[key]
-
-    if not final_data:  # Si no hay datos, no se escribe el CSV
+    if not final_data:
         print("--------------No hay datos para escribir en el CSV.")
         return
+    
+    if mismatch_found:
+        print("--------------Se encontraron residuos que no coinciden. Ver errores.log")
 
-    # Convertir a DataFrame
+    # Convert to DataFrame
     residue_ids = np.array(list(final_data.keys()), dtype=object)
     features = np.array(list(final_data.values()))
-
     df = pd.DataFrame(features, index=residue_ids, columns=column_names)
-
-    # Guardar en CSV
+    # Save as CSV
     df.to_csv(output_file, index_label="Residue_ID")
     print(f"--------------Archivo guardado: {output_file}")
 
@@ -407,33 +402,37 @@ def merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data
 
 def main():
 
+    res_dict = {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K',
+               'ILE': 'I', 'PRO': 'P', 'THR': 'T', 'PHE': 'F', 'ASN': 'N',
+               'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W',
+               'ALA': 'A', 'VAL': 'V', 'GLU': 'E', 'TYR': 'Y', 'MET': 'M'}
+
     pdb_directory="../files/pdb/original_files"
     pdb_site_directory="../files/pdb/protwithsitefinal"
     fasta_directory="../files/fasta"
     psiblast_directory="../files/psiblast"
     jackhmmr_directory="../files/jackhmmr"
-    structural_directory = "../files/structural"
     features_directory = "../files/features"
     database_psiblast = "../database/uniprot_sprot_db"
     database_jackhmmer = "../database/uniprot_sprot.fasta"
 
-    with open("log") as f:
+    with open("skip_pdbs.txt") as f:
         pdb_missing = {line.strip() for line in f}
 
     pdb_ids = [f[:-4] for f in os.listdir(pdb_directory) if f.endswith(".pdb")]
     pdb_filtered = [pdb_id for pdb_id in pdb_ids if pdb_id not in pdb_missing]
-    # pdb_filtered = ["3emh"]
-    for pdb_id in pdb_filtered[11:101]:
+    pdb_filtered = ["6chq"]
+    for pdb_id in pdb_filtered[0:2001]:
         try:
             # Start timer
             start_time = time.time() 
 
             # Extract fasta for each chain
-            chains=pdb2fasta(pdb_id,  pdb_directory, fasta_directory)
+            chains=pdb2fasta(pdb_id,  pdb_directory, fasta_directory, res_dict)
             offset=get_offset_from_pdb(pdb_id, pdb_directory)
             # Get physicochemical and structural information from the whole pdb
-            physicochemical_data=get_physicochemical_features(pdb_id, pdb_directory)
-            structural_data=get_structural_features(pdb_id, pdb_directory, structural_directory)
+            physicochemical_data=get_physicochemical_features(pdb_id, pdb_directory, res_dict)
+            structural_data=get_structural_features(pdb_id, pdb_directory, res_dict)
             # Run PSI-BLAST for each chain
             run_psiblast(chains, database_psiblast, fasta_directory, psiblast_directory)
             pssm_data=parse_pssm(chains, psiblast_directory, offset)
@@ -441,16 +440,10 @@ def main():
             run_jackhmmer(chains, database_jackhmmer, fasta_directory, jackhmmr_directory,num_iterations=3)
             hmm_data=parse_hmm(chains, jackhmmr_directory, offset)
             # Get binding site label
-            binding_data=get_binding_sites(pdb_id, pdb_site_directory)
+            binding_data=get_binding_sites(pdb_id, pdb_site_directory, res_dict)
             # Merge all the features in one numpy matrix
-            # residue_ids, features = merge_data(physicochemical_data, structural_data, pssm_data, hmm_data)
             merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data, binding_data, f"{features_directory}/{pdb_id}.csv")
-            # num_residues, num_features = features.shape
-            # print(f"Matrix size: {num_residues} x {num_features}")
-            # Save matrix to features directory
-            # os.makedirs(features_directory, exist_ok=True)
-            # np.savez(f"{features_directory}/{pdb_id}.npz", res_ids=residue_ids, features=features)
-
+          
             # Remove files from fasta, psiblast and jackhmmr directories
             for folder in [fasta_directory, psiblast_directory, jackhmmr_directory]:
                 if os.path.exists(folder) and os.path.isdir(folder):  # Verifica que la carpeta exista
@@ -464,7 +457,7 @@ def main():
             print(f"Total time of execution: {elapsed_time:.2f} seconds")
         except Exception as e:
             with open("errores.log", "a") as f:
-                f.write(f"Error con {pdb_id}: {e}\n")
+                f.write(f"{pdb_id}: {e}\n")
                 f.write(traceback.format_exc() + "\n")
 
 if __name__ == "__main__":
