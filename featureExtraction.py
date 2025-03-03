@@ -422,7 +422,7 @@ def main():
     with open("pdbs_marti.txt") as f:
         pdb_filtered = [line.strip() for line in f]
 
-    # pdb_filtered = ["1a08"]
+    # pdb_filtered = ["1a4g"]
     for pdb_id in pdb_filtered[0:2001]:
         try:
             # Start timer
@@ -442,6 +442,10 @@ def main():
             hmm_data=parse_hmm(chains, jackhmmr_directory, offset)
             # Get binding site label
             binding_data=get_binding_sites(pdb_id, pdb_site_directory, res_dict)
+            # Print keys
+            # print([k for k in structural_data.keys() if k[1]=="B"])
+            # print([k for k in hmm_data.keys() if k[1]=="B"])
+            # print([k for k in binding_data.keys() if k[1]=="B"])
             # Merge all the features in one numpy matrix
             merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data, binding_data, f"{features_directory}/{pdb_id}.csv")
           
