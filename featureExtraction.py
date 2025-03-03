@@ -376,11 +376,11 @@ def merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data
     final_data = {}
     mismatch_found = False
     with open("errores.log", "a") as error_log:
-        for key in structural_data.keys():
-            if key in physicochemical_data and key in pssm_data and key in hmm_data and key in binding_data:              
+        for key in binding_data.keys():
+            if key in physicochemical_data and key in pssm_data and key in hmm_data and key in structural_data:              
                 final_data[key] = physicochemical_data[key] + structural_data[key] + pssm_data[key] + hmm_data[key] + binding_data[key]
             else:
-                error_log.write(f">{output_file} Mismatch for structural key {key}")
+                error_log.write(f">{output_file} Mismatch for structural key {key}\n")
                 mismatch_found=True
 
     if not final_data:
@@ -402,6 +402,9 @@ def merge_data_to_csv(physicochemical_data, structural_data, pssm_data, hmm_data
 
 def main():
 
+    with open("errores.log", "w") as f:
+        f.write("")
+
     res_dict = {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K',
                'ILE': 'I', 'PRO': 'P', 'THR': 'T', 'PHE': 'F', 'ASN': 'N',
                'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W',
@@ -416,12 +419,10 @@ def main():
     database_psiblast = "../database/uniprot_sprot_db"
     database_jackhmmer = "../database/uniprot_sprot.fasta"
 
-    with open("skip_pdbs.txt") as f:
-        pdb_missing = {line.strip() for line in f}
+    with open("pdbs_marti.txt") as f:
+        pdb_filtered = [line.strip() for line in f]
 
-    pdb_ids = [f[:-4] for f in os.listdir(pdb_directory) if f.endswith(".pdb")]
-    pdb_filtered = [pdb_id for pdb_id in pdb_ids if pdb_id not in pdb_missing]
-    pdb_filtered = ["6chq"]
+    # pdb_filtered = ["1a08"]
     for pdb_id in pdb_filtered[0:2001]:
         try:
             # Start timer
