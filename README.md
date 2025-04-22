@@ -4,6 +4,7 @@
 
 Welcome to **PickPocket**, a protein-ligand binding site predictor based on Graph Neural Networks (GNNs). This repository contains:
 
+AUTHOTS: Adam Martí García, Núria Montalà Palau and Martí Sanchis Llovera
 ---
 
 ## 📁 Folder Structure
