@@ -9,7 +9,7 @@ Welcome to **PickPocket**, a protein-ligand binding site predictor based on Grap
 
 ## 📁 Repository Structure
 
-`program.txt`
+### program.txt
 This file contains a link to the **source code** of the PickPocket application. Inside, you'll find:
 
 - Two installation scripts: 
@@ -23,7 +23,7 @@ This file contains a link to the **source code** of the PickPocket application. 
   - Folder `database` with uniprot used for extractng HMM and PSSM profiles
   - Folder `results`, which stores the results and visualitzations of new predictions.
 
-`documentation.zip`
+### documentation.zip
 This folder contains all the **documentation and theory** supporting the project, including:
 
 - 📖 Theoretical background
@@ -31,19 +31,19 @@ This folder contains all the **documentation and theory** supporting the project
 - 🔬 Description of the analysis pipeline
 - 📚 Bibliography and references
 
-`clan_selection_options.txt`
+### clan_selection_options.txt
 This text file contains the names of the protein clans that can be selected for some parameters when using the pickpocket executable
 
-`Feature_Extraction`
+### Feature_Extraction
 This folder contains scripts for extracting the information required by the model from the protein database (`featureExtraction.py`). Additionally, it contains the modules created for that purpose, which are also found in the package.
 
-`Graphs`
+### Graphs
 This folder contains the script used for building the graphs for the GNN.
 
-`Normalization`
+### Normalization
 This folder contains the script used for computing the min-max scale for each feature in the training set. This information is stored in a csv, needed for new predictions.
 
-`Training_Evaluation`
+### Training_Evaluation
 The last folder contains some scripts and jupyter notebooks that were created during the training and evaluation of the GNN that might be of interest.
 
 ---
